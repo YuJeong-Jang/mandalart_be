@@ -1,19 +1,35 @@
-/**
- * Import function triggers from their respective submodules:
- *
- * const {onCall} = require("firebase-functions/v2/https");
- * const {onDocumentWritten} = require("firebase-functions/v2/firestore");
- *
- * See a full list of supported triggers at https://firebase.google.com/docs/functions
- */
+"use strict";
+const express = require("express");
+const cors = require("cors");
+const functions = require("firebase-functions");
+const { setRequestTime } = require("./common/middlewares");
+const {
+  logErrors,
+  clientErrorHandler,
+  errorHandler,
+} = require("./common/errorHandlers");
+const appRouter = require("./routers/appRouter");
+const app = express();
 
-const {onRequest} = require("firebase-functions/v2/https");
-const logger = require("firebase-functions/logger");
+app.use(cors({ origin: true }));
+app.use(express.json());
+app.use(setRequestTime);
+app.use("/app", appRouter);
+app.use("*", () => {
+  throw new Error("PATH_NOT_FOUND");
+});
+app.use(logErrors);
+app.use(clientErrorHandler);
+app.use(errorHandler);
 
-// Create and deploy your first functions
-// https://firebase.google.com/docs/functions/get-started
-
-// exports.helloWorld = onRequest((request, response) => {
-//   logger.info("Hello logs!", {structuredData: true});
-//   response.send("Hello from Firebase!");
-// });
+module.exports = {
+  v1: functions
+    .region("asia-northeast1")
+    .runWith({
+      timeoutSeconds: 540,
+      minInstances: 5,
+      maxInstances: 3000,
+      memory: "512MB",
+    })
+    .https.onRequest(app),
+};
