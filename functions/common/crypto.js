@@ -2,7 +2,7 @@
 const enc = require("crypto-js/enc-utf8");
 const AES = require("crypto-js/aes");
 const CryptoJS = require("crypto-js");
-const { cryptoKey, IV } = require("../credentials/credentials.json");
+const { cryptoKey, IV } = require("../credentials/credentals.json");
 
 function encrypt(plainText, key = cryptoKey) {
   return AES.encrypt(plainText, enc.parse(key), {

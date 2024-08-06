@@ -1,7 +1,7 @@
 "use strict";
 const db = require("../Database/firebaseInit");
 const jwt = require("jsonwebtoken");
-const jwtKey = require("../credentials/credentals.json");
+const key = require("../credentials/credentals.json");
 const { encrypt, decrypt } = require("../common/crypto");
 
 async function getToken(req, res, next) {
@@ -19,7 +19,7 @@ async function getToken(req, res, next) {
     }
 
     const memberDoc = memberRef.docs[0].data();
-    const token = jwt.sign(memberDoc, jwtKey, { expiresIn: "7d" });
+    const token = jwt.sign(memberDoc, key["jwtKey"], { expiresIn: "7d" });
 
     // 디비에 토큰 정보 업데이트
     return res.status(200).send({ token: token });
@@ -31,21 +31,14 @@ async function getToken(req, res, next) {
 
 async function checkUser(req, res, next) {
   try {
-    const { email } = req.body;
-
-    const memberRef = await db
-      .collection("cust_MEMBERS")
-      .where("email", "==", email)
-      .get();
-    let result = false;
-    if (memberRef.empty) {
+    const result = isMember(req);
+    let checkMember = false;
+    if (!result.hasJoined) {
       throw new Error("MEMBER_NOT_FOUND");
-    } else if (memberRef.docs[0].data().del_yn == true) {
+    } else if (result.hasJoined && result.deleted) {
       throw new Error("DELETED_MEMBER");
-    } else {
-      result = true;
     }
-    return res.status(200).send({ checkUser: result });
+    return res.status(200).send({ checkUser: result.hasJoined });
   } catch (err) {
     console.error(err);
     return next(err);
@@ -60,6 +53,14 @@ async function join(req, res, next) {
       pwd: receivedPwd,
       timestamp,
     } = req.body;
+
+    const result = await isMember(req);
+
+    if (result.hasJoined) {
+      throw new Error("ALREADY_JOINED");
+    } else if (result.hasJoined && result.deleted) {
+      throw new Error("DELETED_MEMBER");
+    }
 
     const memberCollection = db.collection("cust_MEMBERS");
     const newMemberDoc = memberCollection.doc();
@@ -78,7 +79,7 @@ async function join(req, res, next) {
     };
 
     await newMemberDoc.set(newMemberObj);
-    const token = jwt.sign(newMemberObj, jwtKey, { expiresIn: "7d" });
+    const token = jwt.sign(newMemberObj, key["jwtKey"], { expiresIn: "7d" });
 
     newMemberObj.token = token;
     return res.status(200).send({ memberInfo: newMemberObj, token: token });
@@ -90,11 +91,12 @@ async function join(req, res, next) {
 
 async function login(req, res, next) {
   try {
-    const { token } = req.get("Authorization");
-    if (token == "") {
+    const token = req.get("authorization");
+    if (token == "" || token == undefined) {
       throw new Error("INVALID_AUTH");
     }
-    const decoded = jwt.verify(token, jwtKey);
+
+    const decoded = jwt.verify(token, key["jwtKey"]);
 
     const memberRef = await db
       .collection("cust_MEMBERS")
@@ -108,9 +110,7 @@ async function login(req, res, next) {
       .where("member_id", "==", memberInfo.document_id)
       .get();
     let boardInfo;
-    if (boardRef.empty) {
-      throw new Error("BOARD_DOC_NOT_FOUND");
-    } else {
+    if (!boardRef.empty) {
       boardInfo = boardRef.docs[0].data();
     }
 
@@ -125,13 +125,13 @@ async function login(req, res, next) {
 
 async function changeMemberInfo(req, res, next) {
   try {
-    const { token } = req.get("Authorization");
+    const token = req.get("authorization");
     const { name, pwd, type, timestamp } = req.body;
-    if (token == "") {
+    if (token == "" || token == undefined) {
       throw new Error("INVALID_AUTH");
     }
 
-    const decoded = jwt.verify(token, jwtKey);
+    const decoded = jwt.verify(token, key["jwtKey"]);
     // 이름, 이메일, 비밀번호
     const memberCollection = db.collection("cust_MEMBERS");
     if (type == "name") {
@@ -147,7 +147,8 @@ async function changeMemberInfo(req, res, next) {
         );
     }
 
-    return res.status(200).send({ msg: memberRef.docs[0].data().id });
+    const memberRef = await memberCollection.doc(decoded.document_id).get();
+    return res.status(200).send({ memberInfo: memberRef.data() });
   } catch (err) {
     console.error(err);
     return next(err);
@@ -156,15 +157,41 @@ async function changeMemberInfo(req, res, next) {
 
 async function refreshToken(req, res, next) {
   try {
-    const { token } = req.get("Authorization");
-    if (token == "") {
+    const token = req.get("authorization");
+    if (token == "" || token == undefined) {
       throw new Error("INVALID_AUTH");
     }
 
-    const decoded = jwt.verify(token, jwtKey);
-    const getNewToken = jwt.sign(db, jwtKey, { expiresIn: "7d" });
+    const decoded = jwt.verify(token, key["jwtKey"]);
+    const getNewToken = jwt.sign(decoded, key["jwtKey"], { expiresIn: "7d" });
 
     return res.status(200).send({ token: getNewToken });
+  } catch (err) {
+    console.error(err);
+    return next(err);
+  }
+}
+
+async function isMember(req, res, next) {
+  try {
+    const { email } = req.body;
+
+    const memberRef = await db
+      .collection("cust_MEMBERS")
+      .where("email", "==", email)
+      .get();
+
+    let response = {};
+    if (memberRef.empty) {
+      response.hasJoined = false;
+    } else if (memberRef.docs[0].del_yn == true) {
+      response.hasJoined = false;
+      response.deleted = true;
+    } else {
+      response.hasJoined = true;
+      response.member = memberRef.docs[0];
+    }
+    return response;
   } catch (err) {
     console.error(err);
     return next(err);
