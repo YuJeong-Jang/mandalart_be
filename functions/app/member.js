@@ -2,7 +2,7 @@
 const db = require("../Database/firebaseInit");
 const jwt = require("jsonwebtoken");
 const key = require("../credentials/credentals.json");
-const { encrypt, decrypt } = require("../common/crypto");
+const functions = require("firebase-functions");
 
 async function getToken(req, res, next) {
   try {
@@ -25,6 +25,7 @@ async function getToken(req, res, next) {
     return res.status(200).send({ token: token });
   } catch (err) {
     console.error(err);
+    functions.logger.log("getToken 입력값 : ", JSON.stringify(req.body));
     return next(err);
   }
 }
@@ -32,7 +33,7 @@ async function getToken(req, res, next) {
 async function checkUser(req, res, next) {
   try {
     const result = isMember(req);
-    let checkMember = false;
+
     if (!result.hasJoined) {
       throw new Error("MEMBER_NOT_FOUND");
     } else if (result.hasJoined && result.deleted) {
@@ -41,6 +42,7 @@ async function checkUser(req, res, next) {
     return res.status(200).send({ checkUser: result.hasJoined });
   } catch (err) {
     console.error(err);
+    functions.logger.log("checkUser 입력값 : ", JSON.stringify(req.body));
     return next(err);
   }
 }
@@ -70,7 +72,6 @@ async function join(req, res, next) {
       name: receivedName,
       pwd: receivedPwd,
       document_id: newMemberDoc.id,
-      timestamp,
       pwd_mod_dt: timestamp,
       reg_dt: timestamp,
       mod_dt: timestamp,
@@ -81,10 +82,10 @@ async function join(req, res, next) {
     await newMemberDoc.set(newMemberObj);
     const token = jwt.sign(newMemberObj, key["jwtKey"], { expiresIn: "7d" });
 
-    newMemberObj.token = token;
     return res.status(200).send({ memberInfo: newMemberObj, token: token });
   } catch (err) {
     console.error(err);
+    functions.logger.log("join 입력값 : ", JSON.stringify(req.body));
     return next(err);
   }
 }
@@ -107,8 +108,11 @@ async function login(req, res, next) {
 
     const boardRef = await db
       .collection("cust_BOARDS")
-      .where("member_id", "==", memberInfo.document_id)
+      .where("member_email", "==", memberInfo.email)
+      .orderBy("reg_dt", "DESC")
+      .limit(1)
       .get();
+      
     let boardInfo;
     if (!boardRef.empty) {
       boardInfo = boardRef.docs[0].data();
@@ -119,13 +123,14 @@ async function login(req, res, next) {
       .send({ memberInfo: memberInfo, boardInfo: boardInfo });
   } catch (err) {
     console.error(err);
+    functions.logger.log("login 입력값 : ", req.get("authorization"));
     return next(err);
   }
 }
 
 async function changeMemberInfo(req, res, next) {
   try {
-    const token = req.get("authorization");
+    let token = req.get("authorization");
     const { name, pwd, type, timestamp } = req.body;
     if (token == "" || token == undefined) {
       throw new Error("INVALID_AUTH");
@@ -148,9 +153,17 @@ async function changeMemberInfo(req, res, next) {
     }
 
     const memberRef = await memberCollection.doc(decoded.document_id).get();
-    return res.status(200).send({ memberInfo: memberRef.data() });
+    // 바뀐 정보로 토큰 재생성
+    token = jwt.sign(memberRef.data(), key["jwtKey"], { expiresIn: "7d" });
+    return res.status(200).send({ memberInfo: memberRef.data(), token: token });
   } catch (err) {
     console.error(err);
+    functions.logger.log(
+      "changeMemberInfo 입력값 : ",
+      JSON.stringify(req.body),
+      "토큰 : ",
+      req.get("authorization")
+    );
     return next(err);
   }
 }
@@ -168,6 +181,7 @@ async function refreshToken(req, res, next) {
     return res.status(200).send({ token: getNewToken });
   } catch (err) {
     console.error(err);
+    functions.logger.log("refreshToken 입력값 : ", req.get("authorization"));
     return next(err);
   }
 }
@@ -194,6 +208,7 @@ async function isMember(req, res, next) {
     return response;
   } catch (err) {
     console.error(err);
+    functions.logger.log("isMember 입력값 : ", JSON.stringify(req.body));
     return next(err);
   }
 }

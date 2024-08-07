@@ -27,9 +27,6 @@ module.exports = {
     .region("asia-northeast1")
     .runWith({
       timeoutSeconds: 540,
-      minInstances: 5,
-      maxInstances: 3000,
-      memory: "512MB",
     })
     .https.onRequest(app),
 };
