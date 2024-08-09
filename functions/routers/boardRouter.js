@@ -5,14 +5,14 @@ const router = express.Router();
 const {
   registerBoard,
   getBoard,
-  getBoardList,
+  // getBoardList,
   updateBoard,
   deleteBoard,
 } = require("../app/board");
 
 router.post("/register", registerBoard);
 router.get("/get/:docId", getBoard);
-router.get("/getList", getBoardList);
+// router.get("/getList", getBoardList);
 router.post("/update", updateBoard);
 router.get("/delete/:docId", deleteBoard);
 

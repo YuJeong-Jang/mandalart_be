@@ -112,10 +112,64 @@ async function login(req, res, next) {
       .orderBy("reg_dt", "DESC")
       .limit(1)
       .get();
-      
+
     let boardInfo;
+    let missionsInfo;
+    let actionsInfo;
     if (!boardRef.empty) {
       boardInfo = boardRef.docs[0].data();
+
+      // 해당 보드의 미션들을 가져온다
+      const missionRef = await db
+        .collection("cust_MISSIONS")
+        .where("member_email", "==", decoded.member_email)
+        .where("board_id", "==", boardInfo.document_id)
+        .orderBy("reg_dt", "DESC")
+        .get();
+
+      let missions = [];
+      if (!missionRef.empty) {
+        // 각 미션별로 해당되는 액션을 가져와서 그룹화
+        missionRef.docs.forEach(async (mission) => {
+          const actionRef = await db
+            .collection("cust_ACTIONS")
+            .where("member_email", "==", decoded.member_email)
+            .where("mission_doc_id", "==", mission.document_id)
+            .orderBy("reg_dt", "DESC")
+            .get();
+
+          let actionList = [];
+          if (!actionRef.empty) {
+            actionRef.docs.forEach((action) => {
+              actionList.push({
+                action_name: action.data().action_name,
+                mission_doc_id: action.data().mission_doc_id,
+                cycle: action.data().cycle,
+                goal_unit: action.data().goal_unit,
+                action_unit: action.data().action_unit,
+                unit: action.data().unit,
+                document_id: action.data().document_id,
+                member_doc_id: action.data().member_doc_id,
+                member_email: action.data().member_email,
+                achievement: action.data().achievement,
+                reg_dt: action.data().reg_dt,
+                mod_dt: action.data().mod_dt,
+                del_dt: action.data().del_dt,
+                del_yn: action.data().del_yn,
+              });
+              // actionList = [{},{},{},{}];
+            });
+            missions[`${mission.mission_name}`] = actionList;
+          }
+          // missions = {
+          //   mission1: [{}, {}, {}, {}],
+          //   mission2: [{}, {}, {}, {}],
+          //   mission3: [{}, {}, {}, {}],
+          //   mission4: [{}, {}, {}, {}],
+          // };
+        });
+        boardInfo.missions = missions;
+      }
     }
 
     return res
